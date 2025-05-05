@@ -2430,8 +2430,8 @@ in_op_right
     }
 
 additive_expr
-  = head:multiplicative_expr
-    tail:(__ additive_operator  __ multiplicative_expr)* {
+  = head:at_time_zone_expr
+    tail:(__ additive_operator  __ at_time_zone_expr)* {
       if (tail && tail.length && head.type === 'column_ref' && head.column === '*') throw new Error(JSON.stringify({
         message: 'args could not be star column in additive expr',
         ...getLocationObject(),
@@ -2441,6 +2441,18 @@ additive_expr
 
 additive_operator
   = "+" / "-"
+
+at_time_zone_expr
+  = head:multiplicative_expr tail:(_at_time_zone_op __ multiplicative_expr)* {
+      let result = head;
+      for (let i = 0; i < tail.length; i++) {
+        result = createBinaryExpr('AT TIME ZONE', result, tail[i][2]);
+      }
+      return result;
+    }
+
+_at_time_zone_op
+  = __ 'AT'i __ 'TIME'i __ 'ZONE'i
 
 multiplicative_expr
   = head:unary_expr_or_primary
