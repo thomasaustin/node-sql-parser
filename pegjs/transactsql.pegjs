@@ -2810,14 +2810,14 @@ count_arg
   / distinct_args
 
 aggr_array_agg
-  = pre:(ident __ DOT)? __ name:(KW_ARRAY_AGG / KW_STRING_AGG) __ LPAREN __ arg:distinct_args __ RPAREN {
+  = pre:(ident __ DOT)? __ name:(KW_ARRAY_AGG / KW_STRING_AGG) __ LPAREN __ arg:distinct_args __ RPAREN __ wg:within_group? {
       return {
         type: 'aggr_func',
         name: pre ? `${pre[0]}.${name}` : name,
         args: arg,
+        within_group_orderby: wg && wg.orderby,
       };
     }
-
 
 star_expr
   = "*" { return { type: 'star', value: '*' }; }
