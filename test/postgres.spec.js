@@ -810,6 +810,20 @@ describe('Postgres', () => {
       ]
     },
     {
+      title: 'delete statement with returning',
+      sql: [
+        'DELETE FROM users WHERE id = 2 RETURNING id, email as email_address;',
+        'DELETE FROM "users" WHERE id = 2 RETURNING id, email AS "email_address"',
+      ]
+    },
+    {
+      title: 'delete statement with returning *',
+      sql: [
+        'DELETE FROM users WHERE id = 2 RETURNING *;',
+        'DELETE FROM "users" WHERE id = 2 RETURNING *',
+      ]
+    },
+    {
       title: 'column quoted data type',
       sql: [
         `select 'a'::"char" as b;`,
@@ -1768,6 +1782,57 @@ describe('Postgres', () => {
         'ALTER TABLE "my_table" ADD COLUMN geom GEOMETRY(Point, 4326)'
       ]
     },
+    {
+      title: 'create table with function default expr',
+      sql: [
+        `CREATE TABLE public.person (
+            external_id character varying(255) DEFAULT "substring"(md5((random())::text), 1, 6)
+        );`,
+        'CREATE TABLE "public"."person" (external_id CHARACTER VARYING(255) DEFAULT "substring"(md5((random())::TEXT), 1, 6))'
+      ]
+    },
+    {
+      title: 'alter table owner to',
+      sql: [
+        'ALTER TABLE public.person OWNER TO postgres;',
+        'ALTER TABLE "public"."person" OWNER TO "postgres"'
+      ]
+    },
+    {
+      title: 'alter sequence restart',
+      sql: [
+        'ALTER SEQUENCE serial RESTART WITH 105;',
+        'ALTER SEQUENCE "serial" RESTART WITH 105'
+      ]
+    },
+    {
+      title: 'alter sequence owner to',
+      sql: [
+        'ALTER SEQUENCE serial OWNER TO postgres;',
+        'ALTER SEQUENCE "serial" OWNER TO postgres'
+      ]
+    },
+    {
+      title: 'alter sequence rename to',
+      sql: [
+        'ALTER SEQUENCE serial RENAME TO postgres;',
+        'ALTER SEQUENCE "serial" RENAME TO postgres'
+      ]
+    },
+    {
+      title: 'alter sequence set logged',
+      sql: [
+        'ALTER SEQUENCE serial set logged;',
+        'ALTER SEQUENCE "serial" SET LOGGED'
+      ]
+    },
+    {
+      title: 'alter sequence set schema',
+      sql: [
+        'ALTER SEQUENCE serial set schema postgres;',
+        'ALTER SEQUENCE "serial" SET SCHEMA postgres'
+      ]
+    },
   ]
   function neatlyNestTestedSQL(sqlList){
     sqlList.forEach(sqlInfo => {
@@ -1796,7 +1861,7 @@ describe('Postgres', () => {
   })
   describe('tables to sql', () => {
     it('should parse object tables', () => {
-      const ast = parser.astify(SQL_LIST[101].sql[0], opt)
+      const ast = parser.astify(SQL_LIST[103].sql[0], opt)
       ast[0].from[0].expr.parentheses = false
       expect(parser.sqlify(ast, opt)).to.be.equal('SELECT last_name, salary FROM "employees" INNER JOIN "salaries" ON "employees".emp_no = "salaries".emp_no')
     })
@@ -2137,7 +2202,7 @@ describe('Postgres', () => {
     ]
     neatlyNestTestedSQL(SQL_LIST)
   })
-  
+
   describe('pg ast', () => {
     it('should get correct columns and tables', () => {
       let sql = 'SELECT "Id" FROM "Test";'

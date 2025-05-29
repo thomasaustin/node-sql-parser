@@ -261,6 +261,7 @@ alter_stmt
   / alter_domain_type_stmt
   / alter_function_stmt
   / alter_aggregate_stmt
+  / alter_sequence_stmt
 
 crud_stmt
   = union_stmt
@@ -701,7 +702,7 @@ create_func_opt
     }
   }
   / return_stmt
-  
+
 create_function_stmt
   = a:KW_CREATE __
   or:(KW_OR __ KW_REPLACE)? __
@@ -1006,6 +1007,14 @@ sequence_definition_start
       value: n
     }
   }
+  / k:'RESTART'i __ w:KW_WITH? __ n:literal_numeric {
+    // => sequence_definition
+    return {
+      resource: 'sequence',
+      prefix: w ? `${k.toLowerCase()} with` : k.toLowerCase(),
+      value: n
+    }
+  }
 
 sequence_definition_cache
   = k:'CACHE'i __ n:literal_numeric {
@@ -1074,7 +1083,7 @@ include_column
       columns:c,
     }
   }
-  
+
 create_index_stmt
   = a:KW_CREATE __
   kw:KW_UNIQUE? __
@@ -1684,6 +1693,85 @@ alter_aggregate_stmt
         }
       };
   }
+
+alter_sequence_definition_owner
+  = 'OWNER'i __ KW_TO __ o:(KW_CURRENT_ROLE / KW_CURRENT_USER / KW_SESSION_USER / ident_type) {
+    /*
+    export type alter_sequence_definition = { "resource": "sequence", prefix?: string,value: literal_string }
+    => alter_sequence_definition
+    */
+    const value = typeof o === 'string' ? { type: 'origin', value: o } : o;
+    return {
+      resource: 'sequence',
+      prefix: 'owner to',
+      value: value
+    }
+  }
+
+alter_sequence_definition_rename
+  = KW_RENAME __ KW_TO __ o:ident_type {
+    // => alter_sequence_definition
+    return {
+      resource: 'sequence',
+      prefix: 'rename to',
+      value: o
+    }
+  }
+
+alter_sequence_definition_set
+  = KW_SET __ o:('LOGGED'i / 'UNLOGGED'i) {
+    // => alter_sequence_definition
+    return {
+      resource: 'sequence',
+      prefix: 'set',
+      value: { type: 'origin', value: o }
+    }
+  }
+  / KW_SET __ KW_SCHEMA __ o:ident_type {
+    // => alter_sequence_definition
+    return {
+      resource: 'sequence',
+      prefix: 'set schema',
+      value: o
+    }
+  }
+alter_sequence_definition
+  = alter_sequence_definition_owner
+  / alter_sequence_definition_rename
+  / alter_sequence_definition_set
+
+alter_sequence_definition_list
+  = head: alter_sequence_definition tail:(__ alter_sequence_definition)* {
+    // => alter_sequence_definition[]
+    return createList(head, tail, 1)
+}
+
+alter_sequence_stmt
+  = KW_ALTER __ KW_SEQUENCE __ ife:if_exists? __ t:table_name __ as:(KW_AS __ data_type)?__ c:(create_sequence_definition_list / alter_sequence_definition_list)? {
+    /*
+      export type alter_sequence_stmt = {
+        type: 'alter',
+        keyword: 'sequence',
+        if_exists?: 'if exists',
+        sequence: [table_name],
+        create_definitions?: create_sequence_definition_list | alter_sequence_definition_list
+      }
+      => AstStatement<alter_sequence_stmt>
+      */
+      t.as = as && as[2]
+      return {
+        tableList: Array.from(tableList),
+        columnList: columnListTableAlias(columnList),
+        ast: {
+          type: 'alter',
+          keyword: 'sequence',
+          if_exists: ife,
+          sequence: [t],
+          expr: c,
+        }
+      }
+  }
+  
 alter_function_stmt
   = KW_ALTER __ t:'FUNCTION'i __ s:table_name __ ags:(LPAREN __ alter_func_args? __ RPAREN)? __ ac:(ALTER_RENAME / ALTER_OWNER_TO / ALTER_SET_SCHEMA) {
     // => AstStatement<alter_resource_stmt_node>
@@ -1758,7 +1846,7 @@ alter_table_stmt
     KW_TABLE? __
     ife:if_exists? __
     o:'only'i? __
-    t:table_ref_list __
+    t:table_name __
     e:alter_action_list {
       /*
       export interface alter_table_stmt_node {
@@ -1780,7 +1868,7 @@ alter_table_stmt
           keyword: 'table',
           if_exists: ife,
           prefix: o && { type: 'origin', value: o },
-          table: t,
+          table: [t],
           expr: e
         }
       };
@@ -1801,6 +1889,7 @@ alter_action
   / ALTER_RENAME
   / ALTER_ALGORITHM
   / ALTER_LOCK
+  / ALTER_OWNER_TO
   / ALTER_COLUMN_DATA_TYPE
   / ALTER_COLUMN_DEFAULT
   / ALTER_COLUMN_NOT_NULL
@@ -2275,7 +2364,7 @@ view_options
     // => 'restrict' | 'cascade';
     return kc.toLowerCase()
   }
-  
+
 reference_option
   = kw:KW_CURRENT_TIMESTAMP __ LPAREN __ l:expr_list? __ RPAREN {
     // => { type: 'function'; name: string; args: expr_list; }
@@ -3045,7 +3134,7 @@ transaction_mode_isolation_level
       value: `read ${e.toLowerCase()}`
     }
   }
-  
+
 transaction_mode
   = 'ISOLATION'i __ 'LEVEL'i __ l:transaction_mode_isolation_level {
     // => { type: 'origin'; value: string; }
@@ -3949,7 +4038,8 @@ delete_stmt
   = KW_DELETE    __
     t:table_ref_list? __
     f:from_clause __
-    w:where_clause? {
+    w:where_clause? __
+    r:returning_stmt? {
       /*
       export interface table_ref_addition extends table_name {
         addition: true;
@@ -3958,7 +4048,9 @@ delete_stmt
        export interface delete_stmt_node {
          type: 'delete';
          table?: table_ref_list | [table_ref_addition];
+         from?: from_clause;
          where?: where_clause;
+         returning?: returning_stmt;
       }
      => AstStatement<delete_stmt_node>
      */
@@ -3986,7 +4078,8 @@ delete_stmt
           type: 'delete',
           table: t,
           from: f,
-          where: w
+          where: w,
+          returning: r,
         }
       };
     }
@@ -4610,7 +4703,7 @@ column_ref
         table: null,
         column: { expr: col },
         collate: ce && ce[1],
-      }; 
+      };
     }
 
 column_ref_quoted
@@ -5059,7 +5152,7 @@ make_interval_func_args
       return { type: 'expr_list', value: createList(head, tail) };
     }
   / expr_list
-  
+
 make_interval_func_clause
   = name:'make_interval'i __ LPAREN __ l:make_interval_func_args __ RPAREN {
     // => { type: 'function'; name: proc_func_name; args: make_interval_func_args; }
@@ -5070,7 +5163,7 @@ make_interval_func_clause
         ...getLocationObject(),
       }
   }
-  
+
 func_call
   = trim_func_clause / tablefunc_clause / substring_funcs_clause / make_interval_func_clause
   / name:'now'i __ LPAREN __ l:expr_list? __ RPAREN __ 'at'i __ KW_TIME __ 'zone'i __ z:literal_string {
@@ -5173,7 +5266,7 @@ cast_data_type
     if (p && s) t.quoted = '"'
     return t
   }
-  
+
 cast_double_colon
   = s:(KW_DOUBLE_COLON __ cast_data_type)+ __ alias:alias_clause? {
     /* => {
@@ -5252,7 +5345,7 @@ cast_expr
       expr: e,
     }
   }
-  / e:(column_ref_quoted / literal / aggr_func / window_func / func_call / case_expr / interval_expr / column_ref_array_index / param) __ c:cast_double_colon? {
+  / e:(aggr_func / window_func / func_call / column_ref_quoted / literal / case_expr / interval_expr / column_ref_array_index / param) __ c:cast_double_colon? {
     /* => ({
         type: 'cast';
         expr: literal | jsonb_expr | aggr_func | func_call | case_expr | interval_expr | column_ref | param

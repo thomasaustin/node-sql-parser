@@ -120,6 +120,13 @@ describe('snowflake', () => {
       ]
     },
     {
+      title: "try_cast",
+      sql: [
+        `SELECT SHA512(TRY_CAST(CONCAT(a, b, c) AS VARCHAR)) AS Hashed FROM v`,
+        `SELECT SHA512(TRY_CAST(CONCAT("a", "b", "c") AS VARCHAR)) AS "Hashed" FROM "v"`,
+      ],
+    },
+    {
       title: 'regexp operator',
       sql: [
         `SELECT v
@@ -509,6 +516,13 @@ describe('snowflake', () => {
               OVER (PARTITION BY player_id ORDER BY date DESC) AS ac_install_date
           FROM some_table;`,
         'SELECT LAST_VALUE("ac_install_date") IGNORE NULLS OVER (PARTITION BY "player_id" ORDER BY "date" DESC) AS "ac_install_date" FROM "some_table"'
+      ]
+    },
+    {
+      title: 'additive operator in column',
+      sql: [
+        'SELECT "a"+"b" FROM DUAL',
+        'SELECT "a" + "b" FROM DUAL'
       ]
     },
   ]
